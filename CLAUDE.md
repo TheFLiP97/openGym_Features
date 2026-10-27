@@ -9,6 +9,9 @@ openGym is a self-hosted gym & body-weight tracker PWA. Two containers (`api` + 
 installable as a home-screen app, optional Capacitor shells for standalone Android/iOS builds.
 License: AGPL-3.0-or-later.
 
+Für das Rep-Sensor-Feature zuerst `docs/rep-sensor/HANDOFF.md` lesen (Plan Stufe 1:
+`docs/rep-sensor/STUFE1_PLAN.md`).
+
 ## Project layout
 
 ```
