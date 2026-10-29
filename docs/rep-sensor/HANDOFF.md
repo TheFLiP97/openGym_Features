@@ -58,7 +58,8 @@ Trainingsqualität und zur Progression.
 - HUD im Workout-Screen muss angepasst werden (klein, abschaltbar)
 
 ## Reihenfolge
-1. Live-Reps zählen + Weg in % (inkl. Teilreps)  ← **als Nächstes**
+1. Live-Reps zählen (nur zählen)  ← **als Nächstes**
+1b. Weg in % + Teilreps (eigene Ausbaustufe, nach dem ersten PR)
 2. Automatische Satzerkennung + Pausentimer-Start
 3. Geschwindigkeit pro Rep + Velocity Loss → RIR-Vorschlag
 4. Selbstkalibrierung (gelegentliche Sätze bis Versagen → Geschwindigkeit am Versagen pro Maschine),

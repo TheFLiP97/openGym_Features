@@ -585,6 +585,10 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       <Section>
         <Row icon="wrench" iconTint="var(--grey)" title={t('Fine-tuning')} subtitle={t('Buttons, timed sets')} accessory="chevron" onClick={() => open('advanced')} />
       </Section>
+      {/* Rep sensor field test (docs/rep-sensor): fork only, German on purpose like the page itself */}
+      <Section>
+        <Row icon="chartLine" iconTint="var(--green)" title="Sensor-Test" subtitle="Reps zählen mit dem Handy auf dem Stapel" accessory="chevron" onClick={() => nav('/sensor-test')} />
+      </Section>
     </>,
 
     advanced: () => {
