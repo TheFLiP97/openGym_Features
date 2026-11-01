@@ -48,6 +48,7 @@ import { canMoveActiveWorkoutUnit, moveActiveWorkoutUnit, canMoveActiveWorkoutEn
 import { nextOpenSet, workoutKeyAction } from '../lib/workout-keys.js'
 import { MUSCLE_NAME } from '../lib/muscles.js'
 import FocusView from './FocusView.jsx'
+import SensorBar from '../components/SensorBar.jsx'
 import { SeasonDeco } from '../components/Seasonal.jsx'
 import { entryDbLoad, bellsIn, ownedWeightsFor, stepOwned } from '../lib/dumbbells.js'
 
@@ -2332,6 +2333,8 @@ function ActiveWorkout() {
       </button>
     })()}
     <div className="workout-end-spacer" />
+    {/* Rep sensor (beta, docs/rep-sensor): ticks a counted set the way the Lock Screen does */}
+    <SensorBar onTick={(idx, i) => liveToggleRef.current(idx, i)} />
   </WorkoutScrollAnchor>
 }
 

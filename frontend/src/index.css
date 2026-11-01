@@ -201,6 +201,10 @@ body.resting #app{padding-bottom:calc(166px + var(--sab))}
 /* The workout screen has no tab bar (App.jsx): only the docked rest bar, when it is there. */
 body.no-tabbar #app{padding-bottom:calc(24px + var(--sab))}
 body.no-tabbar.resting #app{padding-bottom:calc(96px + var(--sab))}
+/* rep sensor bar (components/SensorBar.jsx), docked under the workout; above the rest bar when
+   both are up */
+body.no-tabbar.sensing #app{padding-bottom:calc(96px + var(--sab))}
+body.no-tabbar.sensing.resting #app{padding-bottom:calc(180px + var(--sab))}
 .workout-end-spacer{height:0}
 @keyframes viewfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 #app > .page.vfade{animation:viewfade var(--med) var(--ease)}
@@ -502,17 +506,17 @@ h4.sec{
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   #tabbar{background:var(--bg-el)}
   :root[data-theme="light"] #tabbar{background:#f9f9fb}
-  #timer{background:var(--surface)}
+  #timer,#sensorbar{background:var(--surface)}
   #toast{background:var(--surface-2)}
 }
 /* The setting itself, read directly. The @supports fallback above only fires where backdrop-filter
    is missing; a browser that has it keeps the bars see-through even with Reduce Transparency on.
    Same opaque fills, on every translucent surface. */
 @media (prefers-reduced-transparency: reduce){
-  #tabbar,#timer,#toast,.conn-bar,.whdr.stick{-webkit-backdrop-filter:none;backdrop-filter:none}
+  #tabbar,#timer,#sensorbar,#toast,.conn-bar,.whdr.stick{-webkit-backdrop-filter:none;backdrop-filter:none}
   #tabbar{background:var(--bg-el)}
   :root[data-theme="light"] #tabbar{background:#f9f9fb}
-  #timer{background:var(--surface)}
+  #timer,#sensorbar{background:var(--surface)}
   #toast{background:var(--surface-2)}
   .conn-bar,.whdr.stick{background:var(--bg)}
   /* The badges over an animation and the dim behind a sheet: no frost, and the badge gets a
@@ -1533,6 +1537,21 @@ body.chips-dragging *{cursor:inherit}
 #timer.working .acts{flex:none}
 /* Docked on the workout screen: edge to edge, flush with the bottom, the home indicator's inset
    inside it. */
+#sensorbar{
+  position:fixed;inset-inline-start:0;inset-inline-end:0;bottom:0;z-index:59;
+  background:var(--surface);background:color-mix(in srgb,var(--surface) 97%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(10px);backdrop-filter:saturate(180%) blur(10px);
+  border-radius:var(--r-xl) var(--r-xl) 0 0;padding:12px 14px calc(10px + var(--sab));
+  box-shadow:0 -10px 30px -14px rgba(0,0,0,.55);
+  display:flex;align-items:center;gap:12px;
+}
+#sensorbar.above-timer{bottom:calc(84px + var(--sab));border-radius:var(--r-lg);inset-inline-start:12px;inset-inline-end:12px;padding-bottom:10px}
+#sensorbar .sb-count{flex:none;min-width:52px;text-align:center;font-size:40px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#sensorbar .sb-count small{font-size:20px;color:var(--label-2)}
+#sensorbar .sb-text{flex:1 1 auto;min-width:0}
+#sensorbar .sb-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sensorbar .sb-sub{font-size:13px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sensorbar .sb-acts{flex:none;display:flex;gap:6px}
 body.no-tabbar #timer{
   inset-inline-start:0;inset-inline-end:0;bottom:0;
   border-radius:var(--r-xl) var(--r-xl) 0 0;padding:14px 14px calc(10px + var(--sab));

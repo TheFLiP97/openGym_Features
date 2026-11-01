@@ -505,3 +505,31 @@ Ideen für eine eigene Oberfläche:
   Wie genau, noch offen (Töne vs. Sprache, was zählt als zu schnell/langsam).
 - Laser-Abstandssensor am Eigenbau (Weg direkt, ohne Drift), mit Kalman zusammen mit der IMU.
 - Oberfläche: siehe "Oberflächen-Ideen für später".
+
+## Stand 2026-11-01: Zähler nach dem ersten Gym-Tag (18 Sätze, 31.10.)
+
+Verfahren (`frontend/src/lib/rep-detector.js`, Profil `motion-profile.js`):
+1. Live: Weg-Zähler. Jede Bewegung ≥ 5 cm hoch und halb zurück ist ein Kandidat. Mit Profil zählt
+   live, was im Hub-Band (60–140 % des gelernten Hubs) liegt; ohne Profil der Hub des Satzes
+   plus Takt-Prüfung am Anfang.
+2. Beim Stopp / Hochnehmen: jede Bewegung von ihrem unteren Umkehrpunkt bis zum nächsten als
+   Geschwindigkeits-Form (60 Punkte, normiert) mit der Referenzform verglichen (Profil, sonst
+   Mitte des Satzes). Vom Anfang weg, was < 0,7 passt; vom Ende, was < 0,4 passt; dazwischen
+   zählt alles im Hub-Band.
+3. Profil pro Übung (und Person): Hub, Dauer, Form; gelernt nur aus richtig gezählten Sätzen,
+   gleitend über ~5 Sätze. Testseite: auf dem Handy, Schlüssel = eingetippter Übungsname.
+
+Ergebnis an den 18 Sätzen (fair: Profil nur aus den anderen Sätzen):
+| | exakt | ±1 | Abweichung |
+|---|---|---|---|
+| erster Satz (ohne Profil) | 13/18 | 16/18 | 7 |
+| mit Profil | 14/18 | 17/18 | 5 |
+Live (vor der Korrektur beim Stopp) Abweichung 8–9.
+
+Was nicht geholfen hat (fair geprüft): eine einzelne Schwelle auf der Beschleunigung, auch
+normiert und geglättet (bestenfalls Abweichung ~25–28); Kombination mehrerer Schätzer (alle zählen
+dieselben Randbewegungen mit); Frequenz/DFT als Zähler (Abweichung 58).
+
+Bekannte Lücke: ohne Profil eine lange Pause unten vor der ersten Rep → diese Rep wird verworfen
+(`it.todo` im Test). Achtung Überanpassung: Einstellungen an denselben 18 Sätzen gewählt;
+der nächste Gym-Tag ist der ehrliche Test.

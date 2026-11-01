@@ -11,7 +11,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { RepDetector } from '../lib/rep-detector.js'
 import { motionSupported, requestMotionPermission, startMotion } from '../lib/motion-source.js'
-import { toCsv, fileName, loadRecordings, saveRecordings } from '../lib/motion-recording.js'
+import { toCsv, fileName, loadRecordings, saveRecordings, shareFiles } from '../lib/motion-recording.js'
+import { learn, loadProfiles, saveProfiles, profileKey } from '../lib/motion-profile.js'
+import { learnable } from '../lib/sensor-apply.js'
 import { requestWakeLock, releaseWakeLock } from '../lib/wakelock.js'
 import { Button, TextField } from '../components/ui.jsx'
 
@@ -26,27 +28,7 @@ const STATUS = {
   stopped: 'Gestoppt',
 }
 
-async function shareOrDownload(files) {
-  const list = files.map(f => new File([f.csv], f.name, { type: 'text/csv' }))
-  try {
-    if (navigator.canShare && navigator.canShare({ files: list })) {
-      await navigator.share({ files: list })
-      return
-    }
-  } catch (e) {
-    if (e && e.name === 'AbortError') return    // closed the share sheet
-  }
-  for (const f of list) {
-    const url = URL.createObjectURL(f)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = f.name
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-}
+const shareOrDownload = recs => shareFiles(recs.map(r => ({ name: r.name, text: r.csv })))
 
 export default function SensorTest() {
   const [phase, setPhase] = useState('idle')          // idle | running | done
@@ -64,7 +46,8 @@ export default function SensorTest() {
   const run = useRef(null)       // { det, samples, trace, stop, startedAt }
   const canvas = useRef(null)
 
-  // Graph: filtered vertical acceleration of the last GRAPH_S seconds, reps as lines
+  // Graph: the path of the stack (what the counter counts on) over the last GRAPH_S seconds,
+  // counted reps as lines
   useEffect(() => {
     if (phase !== 'running') return
     let frame
@@ -78,7 +61,7 @@ export default function SensorTest() {
       ctx.clearRect(0, 0, w, h)
       const now = r.samples.length ? r.samples.at(-1)[0] : 0
       const x = t => w - (now - t) / GRAPH_S * w
-      const y = s => h / 2 - s / 5 * (h / 2)               // ±5 m/s² fills the height
+      const y = s => h / 2 - s / 0.5 * (h / 2)             // ±50 cm fills the height
       ctx.strokeStyle = 'rgba(128,128,128,.5)'
       ctx.lineWidth = devicePixelRatio
       ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke()
@@ -119,12 +102,13 @@ export default function SensorTest() {
     setProblem('')
     if (!motionSupported()) { setProblem('Dieser Browser hat keinen Bewegungssensor.'); return }
     if (!(await requestMotionPermission())) { setProblem('Bewegungssensor nicht erlaubt. In Safari: aA → Website-Einstellungen → Bewegung erlauben.'); return }
-    const det = new RepDetector()
+    // what earlier sets of this exercise taught (typical lift, rhythm, shape), if any
+    const det = new RepDetector({}, loadProfiles()[profileKey(exercise)] || null)
     const r = { det, samples: [], trace: [], startedAt: performance.now() }
     r.stop = startMotion((t, ax, ay, az) => {
       r.samples.push([t, ax, ay, az])
       const e = det.step(t, ax, ay, az)
-      if (det.state === 'ready') r.trace.push([t, det.s])
+      if (det.state === 'ready') r.trace.push([t, det.pos])
       if (r.trace.length > 2000) r.trace.splice(0, 1000)
       if (e) {
         setStatus(det.state)
@@ -159,9 +143,18 @@ export default function SensorTest() {
     const next = [rec, ...recordings]
     setRecordings(next)
     setStorageFull(!saveRecordings(next))
+    // The set teaches the exercise's profile, the same rule as in the workout (lib/sensor-apply.js
+    // learnable): unless the real count is far from what was counted.
+    if (profileKey(exercise) && learnable({ done: true, r: rec.real, sensor: { reps: r.det.reps } })) {
+      const all = loadProfiles()
+      all[profileKey(exercise)] = learn(all[profileKey(exercise)], r.det.summary())
+      saveProfiles(all)
+    }
     run.current = null
     setPhase('idle'); setStatus('idle'); setReps(0)
   }
+
+  const profile = loadProfiles()[profileKey(exercise)]
 
   const discard = () => { run.current = null; setPhase('idle'); setStatus('idle'); setReps(0) }
 
@@ -179,6 +172,11 @@ export default function SensorTest() {
         <TextField placeholder="Übung" value={exercise} onChange={e => setExercise(e.target.value)} style={{ flex: 2 }} />
         <TextField placeholder="kg" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value.replace(',', '.'))} style={{ flex: 1 }} />
       </div>
+      {exercise.trim() && <div style={{ marginTop: 8, color: 'var(--label-2)', fontSize: 13 }}>
+        {profile
+          ? `Gelernt aus ${profile.n} ${profile.n === 1 ? 'Satz' : 'Sätzen'}: Hub ${Math.round(profile.lift * 100)} cm, ${profile.gap.toFixed(1)} s pro Rep`
+          : 'Noch nichts gelernt: der erste gespeicherte Satz wird die Vorlage'}
+      </div>}
     </div>
 
     <div className="card" style={{ textAlign: 'center' }}>

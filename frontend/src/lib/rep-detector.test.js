@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { RepDetector } from './rep-detector.js'
 
 // Raw recordings in the format Safari delivers and the sensor test page exports:
@@ -86,5 +86,92 @@ describe('RepDetector', () => {
     const { det } = run(load('gen-10reps-seed1.csv'))
     expect(det.stop()).toBe(10)
     expect(det.state).toBe('stopped')
+  })
+
+  // A stack moving p(t) metres (smooth, cosine-shaped legs), seen by a phone flat on it.
+  const stack = (legs, hz = 60) => {
+    const out = []
+    let t0 = 0, p0 = 0
+    const plan = [[1.5, 0], ...legs, [2, 0]]          // rest, the movement, rest
+    for (const [T, d] of plan) {
+      for (let k = 0; k < Math.round(T * hz); k++) {
+        const t = t0 + k / hz
+        const acc = d * (Math.PI / T) ** 2 / 2 * Math.cos(Math.PI * (t - t0) / T)
+        out.push([t, 0, 0, -(9.81 + (T > 0 && d !== 0 ? acc : 0))])
+      }
+      t0 += T; p0 += d
+    }
+    return out
+  }
+
+  it('counts slow reps whose acceleration hardly shows (7 s per rep, like an assisted pull-up)', () => {
+    const legs = []
+    for (let i = 0; i < 4; i++) legs.push([3, 0.45], [4, -0.45])
+    const { det } = run(stack(legs))
+    expect(det.stop()).toBe(4)
+  })
+
+  it('drops a short preload before the set and the setting down after it', () => {
+    // 12 cm preload, pause, then 8 reps of 40 cm every 2 s, then a 10 cm bump setting it down
+    const legs = [[0.6, 0.12], [0.6, -0.12], [2, 0]]
+    for (let i = 0; i < 8; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    legs.push([1.5, 0], [0.5, 0.1], [0.5, -0.1])
+    const { det } = run(stack(legs))
+    expect(det.stop()).toBe(8)
+  })
+
+  it('drops sitting down and pulling the handle, which moves the stack further than a rep', () => {
+    const legs = [[1.2, 0.65], [1.2, -0.65], [0.3, 0]]  // 65 cm, a short pause; reps go 40 cm
+    for (let i = 0; i < 8; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    const { det, events } = run(stack(legs))
+    // live it may run one ahead for a moment, never more; once the set is over it is right
+    expect(Math.max(...events.filter(e => e.reps !== undefined).map(e => e.reps))).toBeLessThanOrEqual(9)
+    expect(det.stop()).toBe(8)
+  })
+
+  // Known gap (docs/rep-sensor/STUFE1_PLAN.md): without a profile, a long pause at the bottom
+  // before the first rep makes that rep's shape look wrong, and it is dropped.
+  it.todo('first set without a profile: keeps the first rep after a long pause at the bottom')
+
+  it('with a profile of the exercise, keeps a bigger movement out from the start, live too', () => {
+    // sitting down pulls the stack 65 cm, the reps go 40 cm; the profile knows 40 cm
+    const legs = [[1.2, 0.65], [1.2, -0.65], [1.5, 0]]
+    for (let i = 0; i < 6; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    const { det, events } = run(stack(legs), new RepDetector({}, { lift: 0.4, gap: 2 }))
+    expect(Math.max(...events.filter(e => e.reps !== undefined).map(e => e.reps))).toBe(6)
+    expect(det.stop()).toBe(6)
+  })
+
+  it('hands a summary of the set for learning: typical lift, time per rep, shape', () => {
+    const legs = []
+    for (let i = 0; i < 8; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    const { det } = run(stack(legs))
+    det.stop()
+    const s = det.summary()
+    expect(s.lift).toBeGreaterThan(0.3)
+    expect(s.lift).toBeLessThan(0.5)
+    expect(s.gap).toBeGreaterThan(1.5)
+    expect(s.gap).toBeLessThan(2.5)
+    expect(s.shape).toHaveLength(60)
+  })
+
+  // The gym recordings stay on the developer's machine (docs/rep-sensor/data/raw, not in the
+  // repository: they are other people's sets too). When they are there, the counter must keep
+  // what it reached on them without any profile (as in a first set): 13 of the 18 sets of
+  // 2026-10-31 exact, none off by more than 2.
+  const gym = new URL('../../../docs/rep-sensor/data/raw/', import.meta.url)
+  const gymFiles = existsSync(gym) ? readdirSync(gym).filter(f => /\d+reps_2026-10-31.*\.csv$/.test(f)) : []
+  it.skipIf(gymFiles.length < 18)('counts the gym recordings', () => {
+    let exact = 0
+    for (const f of gymFiles) {
+      const [head, ...lines] = readFileSync(new URL(f, gym), 'utf8').trim().split(/\r?\n/)
+      void head
+      const { det } = run(lines.map(l => l.split(',').map(Number)))
+      const real = +f.match(/(\d+)reps/)[1]
+      const counted = det.stop()
+      expect(Math.abs(counted - real), f).toBeLessThanOrEqual(2)
+      if (counted === real) exact++
+    }
+    expect(exact).toBeGreaterThanOrEqual(13)
   })
 })

@@ -121,3 +121,42 @@ Deine Idee "der erste Eintrag ist die Basis, wie beim Gewicht" steckt darin: der
 - Wie viele Sätze für den Median (Vorschlag 5)?
 - Soll die App nach z. B. drei Korrekturen in Folge bei einer Übung von sich aus fragen
   "Liegt das Handy richtig?" – oder nie fragen?
+
+## Nachtrag 2026-11-01: was das Profil pro Person und Übung braucht, und wie groß es wird
+
+Aus den Gym-Tests (Formvergleich + Hub-Band, siehe STUFE1_PLAN.md) braucht das Profil:
+```js
+sensorProfiles: {
+  'leg-extension': {
+    _ts, n,                 // Stempel, aus wie vielen Sätzen gelernt
+    lift: 0.39,             // typischer Hub (m), gleitender Median der letzten Sätze
+    gap: 2.2,               // typische Dauer einer Rep (s)
+    shape: [ … 60 Zahlen ], // Referenzform einer Rep (Geschwindigkeit, normiert), gleitend gemittelt
+    edge: { first: 0.9, last: 0.1, n: 7 },   // wie oft die erste/letzte Bewegung per Korrektur
+                                              // keine Rep war (lernt "Hinsetzen zählt immer mit")
+  }
+}
+```
+Größe: ~0,4 KB pro Person und Übung, wächst nicht mit der Zeit (wird nur überschrieben).
+Bei 50 Übungen ~20 KB.
+
+Pro Satz (wächst mit der Zeit):
+| Inhalt | Größe je Satz | pro Jahr (≈ 4 000 Sätze) | nach 5 Jahren |
+|---|---|---|---|
+| nur Zählung `sensor: {v, src, reps, sure}` | ~50 B | ~0,2 MB | ~1 MB |
+| + VBT-Zusammenfassung (Hub, Geschw. erste/letzte/beste, Teilreps) | ~150 B | ~0,6 MB | ~3 MB |
+Zum Vergleich: eine Satzzeile selbst (`w, r, done, at …`) hat heute schon ~40–80 B.
+Rohdaten: nie gespeichert.
+
+## Nachtrag 2026-11-01: Einbau ins Workout (Beta im Fork)
+
+- Einstellungen, Profile und Debug-Aufnahmen liegen vorerst **nur auf dem Gerät** (nicht im
+  synchronisierten Zustand): `lib/sensor-settings.js`, `lib/motion-profile.js` (Schlüssel
+  `ex:<Übungs-ID>`), `lib/motion-debug-store.js` (IndexedDB). Sync über die NAS kommt später.
+- Am Satz: `sensor: { v: 1, src: 'web', reps, sure }` (`lib/sensor-apply.js`).
+- **Lernregel geändert:** Gelernt wird beim Abhaken aus jedem Satz, dessen eingetragene Zahl
+  höchstens 2 von der gezählten abweicht (`learnable`). Begründung: das Profil lernt aus der
+  Satzmitte (ohne erste/letzte Rep), und die ist auch dann richtig, wenn am Rand eine Bewegung
+  falsch gezählt wurde. Nur bei großer Abweichung (Handy verrutscht, falsche Übung) lernt es nicht.
+- Nach dem Satz: Eintragen (Standard) / Abhaken / Fragen. Bei "Fragen" öffnet "Ja" sofort die
+  RIR/RPE-Auswahl; die Auswahl hakt ab und startet die Pause.

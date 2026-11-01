@@ -51,6 +51,7 @@ import { passwordOn, PasswordRow, openPasswordSignIn, openPasswordRegister } fro
 import { usePasskeys, PasskeysRow, DeviceLinkRow, openDeviceLinkRedeem, PairSheet } from '../components/Passkeys.jsx'
 import { DeleteAccountRow } from '../components/DeleteAccount.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField, SearchField } from '../components/ui.jsx'
+import SensorSettings from '../components/SensorSettings.jsx'
 import { PAGES, ROOT_GROUPS, pageVisible, searchSettings, pageTrail } from './settings-pages.js'
 import { platformNow } from '../lib/platform-now.js'
 import { pathBefore } from '../lib/nav.js'
@@ -585,10 +586,8 @@ export default function Settings({ page = null, find = null, via = null, entryKe
       <Section>
         <Row icon="wrench" iconTint="var(--grey)" title={t('Fine-tuning')} subtitle={t('Buttons, timed sets')} accessory="chevron" onClick={() => open('advanced')} />
       </Section>
-      {/* Rep sensor field test (docs/rep-sensor): fork only, German on purpose like the page itself */}
-      <Section>
-        <Row icon="chartLine" iconTint="var(--green)" title="Sensor-Test" subtitle="Reps zählen mit dem Handy auf dem Stapel" accessory="chevron" onClick={() => nav('/sensor-test')} />
-      </Section>
+      {/* Rep sensor (docs/rep-sensor): beta in this fork, German on purpose like the bar itself */}
+      <SensorSettings />
     </>,
 
     advanced: () => {

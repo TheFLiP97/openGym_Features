@@ -11,69 +11,111 @@
 //   2. Vertical: project onto "up" and take gravity off -> vertical acceleration, + = up.
 //   3. Low-pass at 4 Hz: takes out the 9–10 Hz shake of the stack on its rubber belt and the
 //      sensor noise; a rep moves at well under 3 Hz.
-//   4. Bumps. Every rep shows the same pattern: a bump up at the bottom (the stack is stopped and
-//      pushed up), then a bump down at the top (the stack is braked and let down). A rep is
-//      counted when the bump down at the top is over, i.e. while the stack is being lowered.
-//      Thresholds are relative, not fixed m/s²: never below a multiple of the noise measured at
-//      rest, and as a share of the bumps seen so far in this set, since slow sets have small
-//      bumps and fast sets big ones.
-//   5. Lifted? If the phone tilts more than LIFT_DEG away from its resting position it has been
-//      picked up: the set is over, and a rep counted just before is taken back (picking the phone
-//      up looks like a rep: up, then braked).
+//   4. Path. Integrate twice into velocity and position. Both are pulled gently back towards zero
+//      (LEAK_V, TAU_P) so that small errors cannot pile up into drift; a rep is over long before
+//      that pull matters. Counting on the path, not on the acceleration, is what makes slow and
+//      fast sets alike: a 40 cm rep is 40 cm at any tempo, while its acceleration shrinks with the
+//      square of the tempo (a slow assisted pull-up hardly shows in the acceleration at all).
+//   5. Movements: every time the stack goes up at least MIN and half way back down, that is a
+//      movement (a candidate). Its turning points are found on the path with a small hysteresis.
+//   6. Live count: the movements that look like reps of this set, so far. With a profile from
+//      earlier sets of this exercise: lift within the profile's band. Without: lift close to the
+//      typical one of this set, and the start dropped while it does not fit the rhythm (getting
+//      into the machine, preloading the lever). The live count may correct itself by one.
+//   7. Final count, when the set ends (Stop, or the phone picked up). Every movement is cut out
+//      from its own bottom to the next bottom, stretched to SHAPE_N points and scaled, so that
+//      only its shape is left: the velocity of one rep. That shape is compared with the reference
+//      shape of this exercise (from the profile, or for a first set from the middle of this set).
+//      From the start, movements are dropped while they do not match (SHAPE_START); from the end
+//      likewise, but leniently (SHAPE_END), since reps towards failure get slower and change
+//      shape. In between, every movement counts whose lift lies in the band around the typical
+//      lift (BAND). Measured on the gym recordings this got 14 of 18 sets exact, all but one
+//      within one rep (docs/rep-sensor/STUFE1_PLAN.md).
+//   8. Lifted? If the phone tilts more than LIFT_DEG away from its resting position it has been
+//      picked up: the set is over.
+//
+// summary() hands what this set teaches about the exercise (typical lift, time per rep, shape) to
+// lib/motion-profile.js, which keeps the profile.
 import { LowPass } from './motion-filter.js'
 
 export const P = {
   REST_S: 0.7,        // the phone must lie still this long (s)
   REST_STD: 0.015,    // "still": spread of the acceleration below 1.5 % of gravity
   FC: 4,              // low-pass cut-off (Hz)
-  NOISE_K: 8,         // a bump must stand at least this many times above the resting noise
-  FLOOR: 0.25,        // and never below this (m/s²)
-  REL: 0.35,          // and at least this share of the bumps seen in this set
-  TOP_WITHIN_S: 3,    // the bump down must follow the bump up within this time (s)
-  MIN_REP_S: 0.6,     // two reps are at least this far apart (s)
+  LEAK_V: 1.0,        // velocity is pulled back to zero with this time constant (s)
+  TAU_P: 4,           // and the position with this one (s)
+  HYS: 0.015,         // a turning point is found once the path has come back 1.5 cm
+  MIN: 0.05,          // a movement lifts the stack at least 5 cm
+  BAND: [0.6, 1.4],   // a rep lifts 60–140 % of the typical lift
+  START_GAP: 1.5,     // live, without a profile: at the start the next rep within 1.5 × the typical gap
+  SHAPE_N: 60,        // points a movement's shape is stretched to
+  SHAPE_START: 0.7,   // from the start, drop movements whose shape matches less than this
+  SHAPE_END: 0.4,     // from the end, less than this
   LIFT_DEG: 20,       // tilt beyond this = phone picked up
   LIFT_FC: 1.5,       // low-pass for the tilt (Hz)
-  UNDO_S: 1.0,        // a rep counted this shortly before the pick-up is taken back (s)
   GAP_S: 0.25,        // a pause between samples longer than this makes the count unsure (s)
 }
 
 const median = xs => {
   const s = [...xs].sort((x, y) => x - y)
   const k = s.length >> 1
-  return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2
+  return !s.length ? 0 : s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2
 }
 
+// Scales a list to mean 0 and spread 1, so that only its shape is left.
+export function standardize(xs) {
+  const m = xs.reduce((s, x) => s + x, 0) / xs.length
+  const sd = Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / xs.length) || 1
+  return xs.map(x => (x - m) / sd)
+}
+
+// How alike two standardized shapes are: 1 the same, 0 nothing in common, −1 mirrored.
+export const similarity = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0) / a.length
+
 export class RepDetector {
-  constructor(params = {}) {
+  constructor(params = {}, profile = null) {
     this.p = { ...P, ...params }
-    this.state = 'wait_rest'   // 'wait_rest' -> 'ready' -> 'lifted' (or stop())
-    this.reps = 0
+    this.profile = profile?.lift > 0 ? profile : null   // { lift, gap, shape } of this exercise
+    this.state = 'wait_rest'   // 'wait_rest' -> 'ready' -> 'lifted' or 'stopped'
+    this.reps = 0              // the count to show
     this.sure = true           // false after a gap in the data
     this.buf = []              // while waiting for rest: the last REST_S of samples
     this.up = null             // unit vector "up" in the phone's axes
     this.g = 0                 // gravity as measured, in the input's units
-    this.floor = this.p.FLOOR  // bump threshold from the noise at rest
     this.lp = new LowPass(this.p.FC)
     this.tiltLp = null
-    this.phase = 'wait_up'     // 'wait_up' -> 'in_up' -> 'wait_down' -> 'in_down'
-    this.upPeak = 0            // height of the current bump up
-    this.upAt = 0              // when it was
-    this.downPeak = 0          // depth of the current bump down
-    this.bumps = []            // heights of the bumps up seen in this set
-    this.repTimes = []
     this.lastT = null
-    this.s = 0                 // last filtered vertical acceleration (for a graph)
-    this.tilt = 0              // last tilt from rest in degrees
+    this.s = 0                 // filtered vertical acceleration (m/s², for a graph)
+    this.v = 0                 // velocity (m/s)
+    this.pos = 0               // position (m), + = up; drifts back to 0 slowly
+    this.tilt = 0              // tilt from rest in degrees
+    this.trace = []            // [t, v, pos] of this set, for the shapes at the end (memory only)
+    this.going = 1             // +1: looking for the top, -1: looking for the bottom
+    this.hi = 0                // highest point since the last bottom
+    this.lo = 0                // lowest point since the last top
+    this.loT = 0               // when that lowest point was
+    this.bottom = 0            // the last bottom
+    this.bottoms = []          // times of all bottoms
+    this.lift = 0              // lift of the current movement (bottom -> top)
+    this.armed = false         // the current movement went high enough
+    this.cands = []            // every movement: { t, lift, down }
+    this.kept = []             // the movements that count
   }
+
+  // Times of the reps that count (for a graph).
+  get repTimes() { return this.kept.map(c => c.t) }
 
   // Ends the set by hand (Stop button). Returns the final count.
   stop() {
-    if (this.state !== 'lifted') this.state = 'stopped'
+    if (this.state === 'ready' || this.state === 'wait_rest') this.state = 'stopped'
+    this.finish()
     return this.reps
   }
 
   // One sample: t in seconds, acceleration including gravity in any unit. Returns an event or
-  // null: { type: 'ready' } once at rest, { type: 'rep', reps }, { type: 'lifted', reps, undone }.
+  // null: { type: 'ready' } once at rest, { type: 'rep', reps } when the count goes up,
+  // { type: 'adjust', reps } when it was corrected, { type: 'lifted', reps } when the phone
+  // was picked up (the count is final then).
   step(t, ax, ay, az) {
     const p = this.p
     if (this.lastT !== null && t - this.lastT > p.GAP_S && this.state === 'ready') this.sure = false
@@ -82,50 +124,155 @@ export class RepDetector {
     if (this.state === 'wait_rest') return this.waitRest(t, ax, ay, az)
     if (this.state !== 'ready') return null
 
-    // 5. Lifted?
+    // 8. Lifted?
     const a = 1 - Math.exp(-2 * Math.PI * p.LIFT_FC * dt)
-    const v = [ax, ay, az]
-    for (let i = 0; i < 3; i++) this.tiltLp[i] += a * (v[i] - this.tiltLp[i])
+    const v3 = [ax, ay, az]
+    for (let i = 0; i < 3; i++) this.tiltLp[i] += a * (v3[i] - this.tiltLp[i])
     const len = Math.hypot(...this.tiltLp)
     const cos = (this.tiltLp[0] * this.up[0] + this.tiltLp[1] * this.up[1] + this.tiltLp[2] * this.up[2]) / len
     this.tilt = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI
     if (this.tilt > p.LIFT_DEG) {
       this.state = 'lifted'
-      let undone = 0
-      while (this.repTimes.length && t - this.repTimes.at(-1) < p.UNDO_S) { this.repTimes.pop(); this.reps--; undone++ }
-      return { type: 'lifted', reps: this.reps, undone }
+      this.finish()
+      return { type: 'lifted', reps: this.reps }
     }
 
     // 2. + 3. vertical, filtered
     const vert = ((ax * this.up[0] + ay * this.up[1] + az * this.up[2]) - this.g) / this.g * 9.81
-    const s = this.s = this.lp.step(t, vert)
+    this.s = this.lp.step(t, vert)
 
-    // 4. Bumps
-    const seen = this.bumps.length ? median(this.bumps.slice(-5)) : 0
-    const upThr = Math.max(this.floor, p.REL * seen)
-    if (this.phase === 'wait_up' || this.phase === 'wait_down') {
-      if (s > upThr) { this.phase = 'in_up'; this.upPeak = s; this.upAt = t }
-      // the bump down is measured against the bump up before it AND the bumps of this set, so the
-      // small brake while lowering (≈1 m/s²) and a dip after it are not taken for a rep
-      else if (this.phase === 'wait_down' && s < -Math.max(this.floor, p.REL * Math.max(this.upPeak, seen))) {
-        this.phase = 'in_down'; this.downPeak = s
-      } else if (this.phase === 'wait_down' && t - this.upAt > p.TOP_WITHIN_S) this.phase = 'wait_up'
-    } else if (this.phase === 'in_up') {
-      if (s > this.upPeak) { this.upPeak = s; this.upAt = t }
-      if (s < 0) this.phase = 'wait_down'
-    } else if (this.phase === 'in_down') {
-      this.downPeak = Math.min(this.downPeak, s)
-      if (s > this.downPeak / 2) {             // the bump down is over: the stack is on its way down
-        this.phase = 'wait_up'
-        if (!this.repTimes.length || t - this.repTimes.at(-1) >= p.MIN_REP_S) {
-          this.bumps.push(this.upPeak)
-          this.reps++
-          this.repTimes.push(t)
-          return { type: 'rep', reps: this.reps }
-        }
+    // 4. Path
+    this.v += this.s * dt
+    this.v -= this.v * dt / p.LEAK_V
+    this.pos += this.v * dt
+    this.pos -= this.pos * dt / p.TAU_P
+    this.trace.push([t, this.v, this.pos])
+
+    // 5. Turning points and movements
+    if (this.going === 1) {
+      this.hi = Math.max(this.hi, this.pos)
+      if (this.pos < this.hi - p.HYS) {
+        this.lift = this.hi - this.bottom
+        this.armed = this.lift >= p.MIN
+        this.going = -1
+        this.lo = this.pos
+        this.loT = t
+      }
+    } else {
+      if (this.pos < this.lo) { this.lo = this.pos; this.loT = t }
+      if (this.pos > this.lo + p.HYS) {
+        const last = this.cands.at(-1)
+        if (last && last.down == null) last.down = this.hi - this.lo
+        this.bottoms.push(this.loT)
+        this.armed = false
+        this.bottom = this.lo
+        this.going = 1
+        this.hi = this.pos
       }
     }
+    if (this.armed && this.going === -1 && this.hi - this.pos >= this.lift / 2) {
+      this.armed = false
+      this.cands.push({ t, lift: this.lift, down: null })
+      // 6. live count
+      const before = this.reps
+      this.kept = this.liveKept()
+      this.reps = this.kept.length
+      if (this.reps > before) return { type: 'rep', reps: this.reps }
+      if (this.reps < before) return { type: 'adjust', reps: this.reps }
+    }
     return null
+  }
+
+  // The lift a movement stands for: up or down, whichever is larger (the first one starts from
+  // the resting position, not from the bottom of a previous rep, and reads short going up).
+  full(c) { return Math.max(c.lift, c.down || 0) }
+
+  inBand(c, lift) { return this.full(c) >= this.p.BAND[0] * lift && this.full(c) <= this.p.BAND[1] * lift }
+
+  // 6. Live: with a profile, every movement in its band; without, the typical lift of this set
+  // decides, and the start is dropped while it does not keep the rhythm.
+  liveKept() {
+    const p = this.p
+    if (this.profile) return this.cands.filter(c => this.inBand(c, this.profile.lift))
+    const big = this.cands.filter(c => this.full(c) >= 0.5 * Math.max(...this.cands.map(x => this.full(x))))
+    const lift = median(big.map(c => this.full(c)))
+    const c = this.cands.filter(x => this.inBand(x, lift))
+    let first = 0
+    while (c.length - first >= 3) {
+      const gap = median(c.slice(first + 1).map((x, i) => x.t - c[first + i].t))
+      if (c[first + 1].t - c[first].t <= p.START_GAP * gap) break
+      first++
+    }
+    return c.slice(first)
+  }
+
+  // A movement's shape: the velocity from the bottom before it to the bottom after it.
+  shapeOf(c) {
+    const n = this.p.SHAPE_N, tr = this.trace
+    const before = this.bottoms.filter(b => b < c.t), after = this.bottoms.filter(b => b > c.t)
+    // from the bottom before it, or later if the stack rested there first (a pause before the
+    // first rep, between sets of a rest-pause): a rest is no part of the shape of a rep
+    const t0 = Math.max(before.length ? before.at(-1) : -Infinity, this.startOf(c.t))
+    const t1 = after.length ? after[0] : Math.min(tr.at(-1)[0], t0 + (c.t - t0) * 1.6)
+    const out = []
+    let j = 0
+    for (let k = 0; k < n; k++) {
+      const t = t0 + (t1 - t0) * k / (n - 1)
+      while (j + 1 < tr.length && tr[j + 1][0] < t) j++
+      const [ta, va] = tr[j], [tb, vb] = tr[Math.min(j + 1, tr.length - 1)]
+      const w = tb > ta ? Math.max(0, Math.min(1, (t - ta) / (tb - ta))) : 0
+      out.push(va + (vb - va) * w)
+    }
+    return { shape: standardize(out), dur: t1 - t0 }
+  }
+
+  // Where a movement begins when the stack rested at the bottom first: the last moment, before
+  // it peaks, that the stack was still at its lowest point (within 5 mm). Known gap: after a long
+  // pause the position wanders (it is pulled back to 0 slowly), and the start is found too early.
+  startOf(t) {
+    const tr = this.trace
+    let i = tr.findIndex(x => x[0] >= t)
+    if (i < 0) i = tr.length - 1
+    let lo = i
+    for (let j = i; j >= 0 && t - tr[j][0] < 4; j--) if (tr[j][2] < tr[lo][2]) lo = j
+    let top = lo
+    for (let j = lo; j <= i; j++) if (tr[j][2] > tr[top][2]) top = j
+    let s = lo
+    for (let j = lo; j < top; j++) if (tr[j][2] <= tr[lo][2] + 0.005) s = j
+    return tr[s][0]
+  }
+
+  // 7. Final count.
+  finish() {
+    const p = this.p
+    const last = this.cands.at(-1)
+    if (last && last.down == null) last.down = this.hi - Math.min(this.lo, this.pos)
+    const c = this.cands
+    if (!c.length) { this.kept = []; this.reps = 0; return }
+    for (const x of c) Object.assign(x, this.shapeOf(x))
+    // reference: the profile's, or the middle of this set (not its first two and last movement)
+    const mid = c.length >= 5 ? c.slice(2, -1) : c
+    const ref = this.profile?.shape?.length === p.SHAPE_N ? this.profile.shape
+      : standardize(Array.from({ length: p.SHAPE_N }, (_, k) => mid.reduce((s, x) => s + x.shape[k], 0) / mid.length))
+    const lift = this.profile ? this.profile.lift : median(mid.map(x => this.full(x)))
+    for (const x of c) x.match = similarity(x.shape, ref)
+    let a = 0, b = c.length
+    while (a < b && c[a].match < p.SHAPE_START) a++
+    while (b > a && c[b - 1].match < p.SHAPE_END) b--
+    this.kept = c.slice(a, b).filter(x => this.inBand(x, lift))
+    this.reps = this.kept.length
+  }
+
+  // What this set teaches about the exercise, for lib/motion-profile.js: typical lift (m), time
+  // per rep (s) and the mean shape of the reps that counted, leaving out the first and last.
+  summary() {
+    const k = this.kept.length >= 4 ? this.kept.slice(1, -1) : this.kept
+    if (!k.length || !k[0].shape) return null
+    return {
+      lift: median(k.map(x => this.full(x))),
+      gap: median(k.map(x => x.dur)),
+      shape: standardize(Array.from({ length: this.p.SHAPE_N }, (_, i) => k.reduce((s, x) => s + x.shape[i], 0) / k.length)),
+    }
   }
 
   // 1. Wait for rest
@@ -142,11 +289,6 @@ export class RepDetector {
     const med = [1, 2, 3].map(i => median(this.buf.map(x => x[i])))
     this.g = Math.hypot(...med)
     this.up = med.map(x => x / this.g)
-    // noise at rest along "up", in m/s², sets the lowest bump threshold
-    const vert = this.buf.map(x => ((x[1] * this.up[0] + x[2] * this.up[1] + x[3] * this.up[2]) - this.g) / this.g * 9.81)
-    const vm = vert.reduce((s, x) => s + x, 0) / n
-    const vs = Math.sqrt(vert.reduce((s, x) => s + (x - vm) ** 2, 0) / n)
-    this.floor = Math.max(p.FLOOR, p.NOISE_K * vs)
     this.tiltLp = [...med]
     this.state = 'ready'
     this.buf = []

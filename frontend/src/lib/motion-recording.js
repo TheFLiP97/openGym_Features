@@ -39,6 +39,30 @@ export function loadRecordings(storage = globalThis.localStorage) {
   }
 }
 
+// Hands files ({ name, text, type }) to the share sheet (iPhone: Files, AirDrop, Mail), or
+// downloads them where sharing files is not supported. Must be called from a tap.
+export async function shareFiles(files) {
+  const list = files.map(f => new File([f.text], f.name, { type: f.type || 'text/csv' }))
+  try {
+    if (navigator.canShare && navigator.canShare({ files: list })) {
+      await navigator.share({ files: list })
+      return
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return    // closed the share sheet
+  }
+  for (const f of list) {
+    const url = URL.createObjectURL(f)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = f.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+}
+
 // Returns false when the device refused (storage full): the caller should ask for an export.
 export function saveRecordings(list, storage = globalThis.localStorage) {
   try {
