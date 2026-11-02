@@ -155,23 +155,59 @@ describe('RepDetector', () => {
     expect(s.shape).toHaveLength(60)
   })
 
-  // The gym recordings stay on the developer's machine (docs/rep-sensor/data/raw, not in the
-  // repository: they are other people's sets too). When they are there, the counter must keep
-  // what it reached on them without any profile (as in a first set): 13 of the 18 sets of
-  // 2026-10-31 exact, none off by more than 2.
-  const gym = new URL('../../../docs/rep-sensor/data/raw/', import.meta.url)
-  const gymFiles = existsSync(gym) ? readdirSync(gym).filter(f => /\d+reps_2026-10-31.*\.csv$/.test(f)) : []
-  it.skipIf(gymFiles.length < 18)('counts the gym recordings', () => {
-    let exact = 0
-    for (const f of gymFiles) {
-      const [head, ...lines] = readFileSync(new URL(f, gym), 'utf8').trim().split(/\r?\n/)
-      void head
-      const { det } = run(lines.map(l => l.split(',').map(Number)))
-      const real = +f.match(/(\d+)reps/)[1]
-      const counted = det.stop()
-      expect(Math.abs(counted - real), f).toBeLessThanOrEqual(2)
-      if (counted === real) exact++
-    }
-    expect(exact).toBeGreaterThanOrEqual(13)
+  it('stops by itself when the stack rests at the bottom after the set', () => {
+    const legs = []
+    for (let i = 0; i < 6; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    legs.push([5, 0])
+    const { det, events } = run(stack(legs))
+    const end = events.find(e => e.type === 'rested')
+    expect(end?.reps).toBe(6)
+    expect(end.t).toBeGreaterThan(1.5 + 12 + 3)      // 3 s of rest, not earlier
+    expect(det.state).toBe('rested')
   })
+
+  it('does not stop while the stack is held at the top, or before the first rep', () => {
+    const legs = [[6, 0]]                              // a long wait before the set
+    for (let i = 0; i < 4; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    legs.push([0.9, 0.4], [6, 0], [1.1, -0.4])         // the last rep held up for 6 s
+    const { det, events } = run(stack(legs))
+    expect(events.some(e => e.type === 'rested')).toBe(false)
+    // (all five counted live; the end check may still drop the held one, its shape is unlike the
+    // others: that is the shape check, not the stop)
+    expect(Math.max(...events.filter(e => e.type === 'rep').map(e => e.reps))).toBe(5)
+    expect(det.state).toBe('ready')
+  })
+
+  // The gym recordings stay on the developer's machine (docs/rep-sensor/data/raw/<day>/, not in
+  // the repository: they are other people's sets too). When they are there, the counter must
+  // keep what it reached on them without any profile (as in a first set), ending each set the
+  // way the app does (by itself, else Stop at the end of the recording): on 2026-10-31 13 of the
+  // 18 sets exact, on 2026-11-02 13 of 15, none off by more than 2.
+  const gym = new URL('../../../docs/rep-sensor/data/raw/', import.meta.url)
+  const gymFiles = existsSync(gym)
+    ? readdirSync(gym, { withFileTypes: true }).filter(d => d.isDirectory())
+      .flatMap(d => readdirSync(new URL(encodeURIComponent(d.name) + '/', gym)).map(f => new URL(encodeURIComponent(d.name) + '/' + encodeURIComponent(f), gym)))
+      .filter(u => /\d+reps_\d{4}-\d\d-\d\d.*\.csv$/.test(decodeURIComponent(u.pathname)))
+    : []
+  for (const [day, sets, minExact] of [['2026-10-31', 18, 13], ['2026-11-02', 15, 13]]) {
+    const files = gymFiles.filter(u => decodeURIComponent(u.pathname).includes(day))
+    it.skipIf(files.length < sets)(`counts the gym recordings of ${day}`, () => {
+      let exact = 0
+      for (const u of files) {
+        const name = decodeURIComponent(u.pathname).split('/').at(-1)
+        const lines = readFileSync(u, 'utf8').trim().split(/\r?\n/).slice(1)
+        const det = new RepDetector()
+        for (const l of lines) {
+          const [t, x, y, z] = l.split(',').map(Number)
+          const e = det.step(t, x, y, z)
+          if (e?.type === 'rested' || e?.type === 'lifted') break
+        }
+        const counted = det.stop()
+        const real = +name.match(/(\d+)reps/)[1]
+        expect(Math.abs(counted - real), name).toBeLessThanOrEqual(2)
+        if (counted === real) exact++
+      }
+      expect(exact).toBeGreaterThanOrEqual(minExact)
+    })
+  }
 })

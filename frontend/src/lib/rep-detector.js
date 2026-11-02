@@ -33,6 +33,10 @@
 //      within one rep (docs/rep-sensor/STUFE1_PLAN.md).
 //   8. Lifted? If the phone tilts more than LIFT_DEG away from its resting position it has been
 //      picked up: the set is over.
+//   9. Resting at the bottom? After at least one rep, the phone lying still for AUTO_STOP_S with
+//      the stack at the bottom (it came down from its last rep, or rose only a little since)
+//      ends the set as well. At the top it does not: holding the weight up (an isometric hold,
+//      a breather in a rest-pause) is stillness too, but the set goes on.
 //
 // summary() hands what this set teaches about the exercise (typical lift, time per rep, shape) to
 // lib/motion-profile.js, which keeps the profile.
@@ -54,6 +58,10 @@ export const P = {
   LIFT_DEG: 20,       // tilt beyond this = phone picked up
   LIFT_FC: 1.5,       // low-pass for the tilt (Hz)
   GAP_S: 0.25,        // a pause between samples longer than this makes the count unsure (s)
+  AUTO_STOP_S: 3,     // still this long at the bottom after a rep ends the set (s), or as long
+                      // as one rep takes when that is longer (slow reps rest at the bottom); 0: never
+  STILL_S: 1,         // stillness is judged over this window (s), as strict as REST_STD
+  STILL_V: 0.05,      // and the stack slower than this (m/s): a slow rep is smooth too, but moves
 }
 
 const median = xs => {
@@ -100,6 +108,9 @@ export class RepDetector {
     this.armed = false         // the current movement went high enough
     this.cands = []            // every movement: { t, lift, down }
     this.kept = []             // the movements that count
+    this.still = []            // the last STILL_S of samples, to tell when the phone lies still
+    this.stillSince = null     // since when it has (s), null while it moves
+    this.stillLow = false      // whether that rest began at the bottom
   }
 
   // Times of the reps that count (for a graph).
@@ -115,7 +126,8 @@ export class RepDetector {
   // One sample: t in seconds, acceleration including gravity in any unit. Returns an event or
   // null: { type: 'ready' } once at rest, { type: 'rep', reps } when the count goes up,
   // { type: 'adjust', reps } when it was corrected, { type: 'lifted', reps } when the phone
-  // was picked up (the count is final then).
+  // was picked up, { type: 'rested', reps } when it lay still at the bottom long enough (the
+  // count is final then).
   step(t, ax, ay, az) {
     const p = this.p
     if (this.lastT !== null && t - this.lastT > p.GAP_S && this.state === 'ready') this.sure = false
@@ -180,7 +192,53 @@ export class RepDetector {
       if (this.reps > before) return { type: 'rep', reps: this.reps }
       if (this.reps < before) return { type: 'adjust', reps: this.reps }
     }
+
+    // 9. Resting at the bottom?
+    if (p.AUTO_STOP_S > 0) {
+      this.still.push([t, ax, ay, az])
+      while (this.still.length && t - this.still[0][0] > p.STILL_S) this.still.shift()
+      // quiet: the acceleration hardly varies, and the stack does not glide (a slow rep varies
+      // little too, but keeps a speed)
+      const quiet = this.still.length >= 3 && t - this.still[0][0] >= p.STILL_S * 0.95
+        && this.spread(this.still) < p.REST_STD && Math.abs(this.v) < p.STILL_V
+      if (!quiet) this.stillSince = null
+      else if (this.stillSince === null) {
+        // where the rest began decides: at the bottom, not held up at the top (the position
+        // drifts back to 0 during a long rest, so it is judged at the start only)
+        this.stillSince = t
+        const lift = this.typicalLift()
+        this.stillLow = this.going === -1
+          ? this.hi - this.lo >= 0.5 * Math.max(this.lift, p.MIN)        // came down from the last rep
+          : this.hi - this.bottom < Math.max(2 * p.HYS, 0.5 * lift)      // rose less than half a rep since
+      }
+      if (this.kept.length && this.stillSince !== null && this.stillLow && t - this.stillSince >= Math.max(p.AUTO_STOP_S, this.typicalGap())) {
+        this.state = 'rested'
+        this.finish()
+        return { type: 'rested', reps: this.reps }
+      }
+    }
     return null
+  }
+
+  // Spread of the acceleration in a window, as a share of gravity (0: perfectly still).
+  spread(buf) {
+    const n = buf.length
+    const mean = [1, 2, 3].map(i => buf.reduce((s, x) => s + x[i], 0) / n)
+    const sd = Math.sqrt([1, 2, 3].reduce((s, i) => s + buf.reduce((q, x) => q + (x[i] - mean[i - 1]) ** 2, 0) / n, 0))
+    return sd / (Math.hypot(...mean) || 1)
+  }
+
+  // Typical time per rep: the learned one, or of this set so far (0 before two reps).
+  typicalGap() {
+    if (this.profile?.gap > 0) return this.profile.gap
+    const t = this.repTimes
+    return t.length > 1 ? median(t.slice(1).map((x, i) => x - t[i])) : 0
+  }
+
+  // Typical lift of this set so far, or the learned one.
+  typicalLift() {
+    if (this.profile) return this.profile.lift
+    return this.kept.length ? median(this.kept.map(c => this.full(c))) : 0
   }
 
   // The lift a movement stands for: up or down, whichever is larger (the first one starts from

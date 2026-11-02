@@ -533,3 +533,31 @@ dieselben Randbewegungen mit); Frequenz/DFT als Zähler (Abweichung 58).
 Bekannte Lücke: ohne Profil eine lange Pause unten vor der ersten Rep → diese Rep wird verworfen
 (`it.todo` im Test). Achtung Überanpassung: Einstellungen an denselben 18 Sätzen gewählt;
 der nächste Gym-Tag ist der ehrliche Test.
+
+## Stand 2026-11-02: zweiter Gym-Tag (im Workout, Safari) und was danach geändert wurde
+
+Ergebnis am Gerät (15 Sätze mit bekannter Zahl): 14/15 exakt, alle ±1; ab dem zweiten Satz einer
+Übung 12/12. Nachgerechnet ohne Profil (wie ein erster Satz): 13/15 exakt. Die Gym-Aufnahmen liegen
+nur lokal in `docs/rep-sensor/data/raw/<Tag>/` (nicht im Repo); der Test zählt beide Tage, wenn sie
+da sind.
+
+Die übrigen 10 Sätze (echte Zahl nachgetragen): am Gerät nur 1/10 exakt, weil sie während der
+Zählung abgehakt wurden (siehe Lernfehler unten). Nachgerechnet alle 25 Sätze ohne Profil: 16/25
+exakt, 24/25 ±1, Abweichung 10. Auffällig: Scott-Curl 9 echt, 7 gezählt; Sitzendes Rudern 13
+echt, 11 gezählt (anschauen).
+
+Geändert danach:
+- **Auto-Stopp:** liegt der Stapel nach mindestens einer Rep 3 s ruhig unten (bei langsamen
+  Übungen so lang wie eine Rep dauert, sonst stoppt ein Klimmzug mit Pause unten zu früh), endet
+  der Satz von selbst (`AUTO_STOP_S`). Ruhig = Beschleunigung schwankt kaum *und* der Stapel gleitet nicht (eine
+  langsame Rep ist auch glatt, hat aber Geschwindigkeit). Ob die Ruhe unten beginnt, wird am Anfang
+  der Ruhe entschieden: oben halten stoppt nicht. Hochnehmen stoppt weiterhin auch. An beiden Tagen
+  ändert der Auto-Stopp keine einzige Zählung.
+- **Lernfehler behoben:** 10 der 25 Sätze vom 02.11. hatten weder Zählung noch Lernen, weil sie
+  abgehakt wurden, während der Sensor noch lief, und nur der jeweils letzte Satz auf sein Abhaken
+  wartete. Jetzt: Abhaken (oder RIR wählen) während der Zählung = Stopp; die Zahl kommt trotzdem in
+  den Satz (außer sie wurde von Hand geändert), und jeder gezählte Satz lernt bei seinem Abhaken.
+- **RIR-Auswahl** öffnet sich nach dem Eintragen auch im Modus "Eintragen" (und nach "Ja" bei
+  "Fragen"); "Abhaken" bleibt ohne Auswahl.
+- **Debug-Aufnahmen** speichern zusätzlich die Live-Zahl vor der Endprüfung (`live`) und wie der
+  Satz endete (`end`: stop / lifted / rested / tick).

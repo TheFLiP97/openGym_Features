@@ -160,3 +160,10 @@ Rohdaten: nie gespeichert.
   falsch gezählt wurde. Nur bei großer Abweichung (Handy verrutscht, falsche Übung) lernt es nicht.
 - Nach dem Satz: Eintragen (Standard) / Abhaken / Fragen. Bei "Fragen" öffnet "Ja" sofort die
   RIR/RPE-Auswahl; die Auswahl hakt ab und startet die Pause.
+
+## Nachtrag 2026-11-02
+
+- Jeder gezählte Satz wartet auf sein Abhaken und lernt dann (vorher nur der letzte).
+- Ein Satz, der abgehakt wird, während der Sensor zählt, beendet die Zählung und bekommt die Zahl
+  trotzdem (nicht, wenn die Wiederholungen inzwischen von Hand geändert wurden).
+- Debug-Aufnahme: `{ …, counted, live, end, real, … }`, `end` = stop | lifted | rested | tick.
