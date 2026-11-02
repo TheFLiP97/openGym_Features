@@ -167,3 +167,5 @@ Rohdaten: nie gespeichert.
 - Ein Satz, der abgehakt wird, während der Sensor zählt, beendet die Zählung und bekommt die Zahl
   trotzdem (nicht, wenn die Wiederholungen inzwischen von Hand geändert wurden).
 - Debug-Aufnahme: `{ …, counted, live, end, real, … }`, `end` = stop | lifted | rested | tick.
+- Modus "Fragen", **Nein**: die Zahl kommt nicht in den Satz, der Satz merkt sich aber die Zählung.
+  Richtige Zahl eintippen, RIR wählen (oder abhaken): der Satz lernt mit der eingetippten Zahl.

@@ -15,9 +15,11 @@ export function countable(row, mode) {
 }
 
 // The row after the sensor counted `reps` (a new object; the input is not changed).
-// rAtStart: the row's r when the sensor started. Returns { row, filled }.
-export function applyCount(row, { reps, sure = true, rAtStart }) {
-  const typed = rAtStart !== undefined && row.r !== rAtStart
+// rAtStart: the row's r when the sensor started. fill: false keeps r as it is (the count was
+// turned down, the right number is typed in by hand), but the row still remembers the count, so
+// that its tick can teach. Returns { row, filled }.
+export function applyCount(row, { reps, sure = true, rAtStart, fill = true }) {
+  const typed = !fill || (rAtStart !== undefined && row.r !== rAtStart)
   const next = { ...row, sensor: { v: SENSOR_VERSION, src: 'web', reps, sure: !!sure } }
   if (!typed) next.r = reps
   return { row: next, filled: !typed }

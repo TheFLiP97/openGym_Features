@@ -15,6 +15,13 @@ describe('sensor apply', () => {
     expect(row.sensor.reps).toBe(10)
   })
 
+  it('turned down, leaves the reps for the hand but still remembers the count', () => {
+    const { row, filled } = applyCount({ w: 30, r: 10, done: false }, { reps: 7, rAtStart: 10, fill: false })
+    expect(filled).toBe(false)
+    expect(row.r).toBe(10)
+    expect(row.sensor.reps).toBe(7)
+  })
+
   it('does not change the row it was given', () => {
     const before = { w: 40, r: 8, done: false }
     applyCount(before, { reps: 9, rAtStart: 8 })

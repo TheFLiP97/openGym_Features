@@ -7,7 +7,7 @@
 // the row. Then, as set in Settings → Workout: the count goes into the set's reps and the effort
 // picker opens (RIR or RPE, as the profile logs; its pick ticks the set as it does on the row)
 // ('fill'), or the set is ticked right away ('tick'), or the bar asks first and a yes goes on as
-// 'fill' does ('ask'). Reps typed in by hand during the set are never overwritten
+// 'fill' does ('ask'; a no leaves the reps to be typed in, and the set still learns from them). Reps typed in by hand during the set are never overwritten
 // (lib/sensor-apply.js); a set ticked while it was counted still gets the count.
 //
 // Learning: when a counted set is ticked, it teaches this exercise's profile
@@ -147,14 +147,14 @@ function ActiveSensorBar({ settings, onTick }) {
   finishRef.current = finish
 
   // The count into the row, also when the row was ticked meanwhile (that tick then teaches at once).
-  function take({ r, counted, summary, debugId }) {
+  function take({ r, counted, summary, debugId }, fill = true) {
     const { idx, i, exId } = r.target
     let filled = false, wasDone = false
     update(s => {
       const row = s.active?.entries?.[idx]?.sets?.[i]
       if (!row) return
       wasDone = !!row.done
-      const res = applyCount(row, { reps: counted, sure: r.det.sure, rAtStart: r.rAtStart })
+      const res = applyCount(row, { reps: counted, sure: r.det.sure, rAtStart: r.rAtStart, fill })
       s.active.entries[idx].sets[i] = res.row
       filled = res.filled
     }, true)
@@ -206,7 +206,14 @@ function ActiveSensorBar({ settings, onTick }) {
     take(d)
     askEffort(d.r.target)
   }
-  const dismiss = () => { asked.current = null; setPhase('idle') }
+  // No: the count stays out of the reps, to be typed in by hand. The set still remembers it, so
+  // ticking it (or picking its RIR) teaches with the number typed in.
+  const dismiss = () => {
+    const d = asked.current
+    asked.current = null
+    if (d) take(d, false)
+    else setPhase('idle')
+  }
 
   const which = target ? `Satz ${target.set}${target.w ? ' · ' + fmtNum(target.w) + ' kg' : ''}` : ''
   const title = phase === 'ask' ? `${reps} übernehmen?` : target ? target.name : 'Kein offener Satz mit Wiederholungen'
