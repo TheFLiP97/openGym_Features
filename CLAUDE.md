@@ -20,6 +20,9 @@ Für das Rep-Sensor-Feature zuerst `docs/rep-sensor/HANDOFF.md` lesen (Plan Stuf
 frontend/   React 19 + Vite app (src/views, src/components, src/store, src/lib, src/sheets.jsx).
             android/ + ios/ are the Capacitor shells (docs/MOBILE.md); ios/ also holds the watch
             app (Watch, WatchCore, WatchWidgets), the widgets and the animation-pack downloader.
+            android/wear is the Wear OS watch app (Kotlin, Compose; docs/WEAR_OS.md), on the same
+            watch protocol as the Apple Watch (lib/watch-sync.js). garmin/ is the Garmin Connect IQ
+            watch app (Monkey C; docs/GARMIN.md), on a cut-down snapshot (lib/garmin-snapshot.js).
 api/        Backend: server.js (plain node:http) plus small testable modules beside it.
             coach/ is the optional AI coach; coach/core/ is shared with the phone apps.
             openapi.yaml documents every route.
@@ -86,6 +89,9 @@ machine, never in CI (see "Exercise media" below and docs/APP_STORES.md).
   - `onerm.js`: estimated 1RM from logged sets (several formulas).
   - `finish-workout.js`: reduces a completed session back into state (weights advance, PRs).
   - `recovery.js` / `recovery-view.js`: the fatigue and muscle-recovery model.
+  - `warmup-ramp.js` (+ `warmup-snap.js`): automatic warm-ups by load, a slot's own warm-up rows,
+    rounded to the active gym (plates.js dropGrid); history.js rerampWarmups keeps them aimed.
+  - `coach-adapt.js`: applies the Coach's changes to the workout in progress (the `adapt` job).
   - `workout-model.js`, `supersetFlow.js`: the in-session workout state machine.
   - `sync-merge.js`: the field-by-field merge behind the 409 retry (see "Sync" below).
   - `exercises.js` / `exercises-data.js`: the exercise library (5,632 catalogue exercises plus
@@ -124,7 +130,8 @@ written temp-then-rename (`durable.js`). Custom-exercise photos and videos live 
 `DATA_DIR/uploads` (`media.js`). Auth is WebAuthn passkeys (`@simplewebauthn/server`), an optional
 password, and a signed session cookie (HMAC with `DATA_DIR/secret`); paired phones get the same
 session as a bearer token. Optional pieces are gated by env vars: `ADMIN_UIDS`, `INVITE_ONLY`,
-`ALLOW_GUEST`, `PASSWORD_LOGIN`, `AUDIT_*`. Web Push (`web-push`, VAPID keys in `data/vapid.json`)
+`ALLOW_GUEST`, `PASSWORD_LOGIN`, `AUDIT_*`, `INTEGRATIONS` (`api/integrations/`: providers, sealed
+connections in `DATA_DIR/integrations/`, the outbound webhook; docs/INTEGRATIONS.md). Web Push (`web-push`, VAPID keys in `data/vapid.json`)
 drives rest-timer and reminder notifications.
 
 ### Sync
