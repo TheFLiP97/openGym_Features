@@ -129,9 +129,12 @@ describe('RepDetector', () => {
     expect(det.stop()).toBe(8)
   })
 
-  // Known gap (docs/rep-sensor/STUFE1_PLAN.md): without a profile, a long pause at the bottom
-  // before the first rep makes that rep's shape look wrong, and it is dropped.
-  it.todo('first set without a profile: keeps the first rep after a long pause at the bottom')
+  it('keeps the first rep after a long pause at the bottom, as it comes in time with the rest', () => {
+    const legs = [[4, 0]]                              // resting on the stack before the set
+    for (let i = 0; i < 8; i++) legs.push([0.9, 0.4], [1.1, -0.4])
+    const { det } = run(stack(legs))
+    expect(det.stop()).toBe(8)
+  })
 
   it('with a profile of the exercise, keeps a bigger movement out from the start, live too', () => {
     // sitting down pulls the stack 65 cm, the reps go 40 cm; the profile knows 40 cm
@@ -166,30 +169,28 @@ describe('RepDetector', () => {
     expect(det.state).toBe('rested')
   })
 
-  it('does not stop while the stack is held at the top, or before the first rep', () => {
+  it('does not stop before the first rep, or for a short breather between reps', () => {
     const legs = [[6, 0]]                              // a long wait before the set
     for (let i = 0; i < 4; i++) legs.push([0.9, 0.4], [1.1, -0.4])
-    legs.push([0.9, 0.4], [6, 0], [1.1, -0.4])         // the last rep held up for 6 s
+    legs.push([2, 0])                                  // 2 s at the bottom, then on
+    for (let i = 0; i < 2; i++) legs.push([0.9, 0.4], [1.1, -0.4])
     const { det, events } = run(stack(legs))
     expect(events.some(e => e.type === 'rested')).toBe(false)
-    // (all five counted live; the end check may still drop the held one, its shape is unlike the
-    // others: that is the shape check, not the stop)
-    expect(Math.max(...events.filter(e => e.type === 'rep').map(e => e.reps))).toBe(5)
-    expect(det.state).toBe('ready')
+    expect(det.stop()).toBe(6)
   })
 
   // The gym recordings stay on the developer's machine (docs/rep-sensor/data/raw/<day>/, not in
   // the repository: they are other people's sets too). When they are there, the counter must
   // keep what it reached on them without any profile (as in a first set), ending each set the
-  // way the app does (by itself, else Stop at the end of the recording): on 2026-10-31 13 of the
-  // 18 sets exact, on 2026-11-02 13 of 15, none off by more than 2.
+  // way the app does (by itself, else Stop at the end of the recording): on 2026-10-31 14 of the
+  // 18 sets exact, on 2026-11-02 14 of 15, on 2026-11-04 13 of 17, none off by more than 2.
   const gym = new URL('../../../docs/rep-sensor/data/raw/', import.meta.url)
   const gymFiles = existsSync(gym)
     ? readdirSync(gym, { withFileTypes: true }).filter(d => d.isDirectory())
       .flatMap(d => readdirSync(new URL(encodeURIComponent(d.name) + '/', gym)).map(f => new URL(encodeURIComponent(d.name) + '/' + encodeURIComponent(f), gym)))
       .filter(u => /\d+reps_\d{4}-\d\d-\d\d.*\.csv$/.test(decodeURIComponent(u.pathname)))
     : []
-  for (const [day, sets, minExact] of [['2026-10-31', 18, 13], ['2026-11-02', 15, 13]]) {
+  for (const [day, sets, minExact] of [['2026-10-31', 18, 14], ['2026-11-02', 15, 14], ['2026-11-04', 17, 13]]) {
     const files = gymFiles.filter(u => decodeURIComponent(u.pathname).includes(day))
     it.skipIf(files.length < sets)(`counts the gym recordings of ${day}`, () => {
       let exact = 0

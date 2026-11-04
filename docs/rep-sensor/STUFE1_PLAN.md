@@ -561,3 +561,31 @@ Geändert danach:
   "Fragen"); "Abhaken" bleibt ohne Auswahl.
 - **Debug-Aufnahmen** speichern zusätzlich die Live-Zahl vor der Endprüfung (`live`) und wie der
   Satz endete (`end`: stop / lifted / rested / tick).
+
+## Stand 2026-11-04: dritter Gym-Tag (17 Sätze, Beine) und Änderungen
+
+Am Gerät: live 10/17 exakt, nach dem Stopp 9/17, ±1 15/17. Fast alle Fehler am **Anfang**: die
+erste echte Rep wurde verworfen, weil ihr Formfenster die Ruhe davor mit enthielt (Dauer 2–4,5 s
+statt 1,3–2 s). Dieselbe Lücke stand seit dem 01.11. als `it.todo` im Test.
+
+Geändert (geprüft am Replay aller 60 beschrifteten Sätze, Profil nur aus früheren Sätzen):
+- **Takt-Regel für die erste Bewegung:** kommt sie im Takt der folgenden Reps (Abstand zur zweiten
+  ≤ 1,25 × der übliche Abstand) und liegt ihr Hub im Band, zählt sie, auch bei schlechter Form.
+  Einsteigen, Griff ziehen oder Vorspannen kommen dagegen mit einer Pause davor (1,6–4 × Abstand).
+  Ergebnis: 38 → 44 von 60 exakt, ±1 55 → 59 von 60 (Tag 1: 13 → 13, Tag 2: 16 → 17, Tag 3:
+  9 → 14). Ohne Profil: 36 → 42. Zwischen 1,15 und 1,3 gleich gut (kein Zufallstreffer).
+- **Auto-Stopp ohne "unten"-Prüfung:** die Höhe des Stapels driftet nach der letzten Rep, darum
+  meinte der Zähler in 4 Sätzen trotz 7–13 s Ruhe "nicht unten". Jetzt beendet jede Ruhe nach
+  einer Rep den Satz (3 s, bei langsamen Reps eine Rep-Dauer). Zählungen unverändert, von selbst
+  gestoppt 10 → 16 von 60 Aufnahmen. Kürzer (2–2,5 s, früher anfangen) wurde verworfen: das
+  schnitt einen schweren Preacher-Satz mit Pause vor der letzten Rep ab (16 → 15).
+- **Anzeige:** nach 1 s Ruhe zeigt die Leiste "Ruhig, stoppt gleich".
+
+- **Rand-Prüfung:** eine Bewegung außerhalb des Hub-Bands wird am Anfang mit weggenommen, statt
+  die Formprüfung zu beenden (sonst schützte ein kleines Vorspannen das Hinsetzen dahinter).
+  44 → 46 von 60 exakt, ohne Profil 42 → 45. Die Takt-Regel gilt dafür für die Bewegung direkt
+  vor der ersten passenden (nicht nur für die allererste).
+
+Offen (die 6 fehlenden Sätze waren Kniebeugen ohne Sensor):
+Auto-Start (z. B. wenn die Pause endet); Live-Zahl springt nach dem Stopp noch (live 35/60 exakt,
+Ende 44/60); schwere letzte Rep (Scott-Curl 9 → 8).

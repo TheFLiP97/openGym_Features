@@ -26,17 +26,22 @@
 //      from its own bottom to the next bottom, stretched to SHAPE_N points and scaled, so that
 //      only its shape is left: the velocity of one rep. That shape is compared with the reference
 //      shape of this exercise (from the profile, or for a first set from the middle of this set).
-//      From the start, movements are dropped while they do not match (SHAPE_START); from the end
+//      From the start, movements are dropped while they do not match (SHAPE_START) or lift too
+//      little or too much; from the end
 //      likewise, but leniently (SHAPE_END), since reps towards failure get slower and change
 //      shape. In between, every movement counts whose lift lies in the band around the typical
-//      lift (BAND). Measured on the gym recordings this got 14 of 18 sets exact, all but one
-//      within one rep (docs/rep-sensor/STUFE1_PLAN.md).
+//      lift (BAND). One exception at the start: a first movement that came in time with the
+//      reps after it (BEAT) and lifted as far is a rep, whatever its shape. After a pause at the
+//      bottom the first rep's window holds some of that rest and its shape reads badly, while
+//      getting into the machine or preloading the lever comes with a pause before the reps.
+//      Measured on 60 gym sets of three days: 46 exact, 59 within one rep
+//      (docs/rep-sensor/STUFE1_PLAN.md).
 //   8. Lifted? If the phone tilts more than LIFT_DEG away from its resting position it has been
 //      picked up: the set is over.
-//   9. Resting at the bottom? After at least one rep, the phone lying still for AUTO_STOP_S with
-//      the stack at the bottom (it came down from its last rep, or rose only a little since)
-//      ends the set as well. At the top it does not: holding the weight up (an isometric hold,
-//      a breather in a rest-pause) is stillness too, but the set goes on.
+//   9. Resting? After at least one rep, the phone lying still for AUTO_STOP_S (or one rep's time,
+//      when that is longer) ends the set as well. Where the stack rests is not asked: the path
+//      drifts after the last rep and would say "not at the bottom" when it is, and a weight held
+//      up still that long is rare (holding a stack shakes).
 //
 // summary() hands what this set teaches about the exercise (typical lift, time per rep, shape) to
 // lib/motion-profile.js, which keeps the profile.
@@ -55,10 +60,11 @@ export const P = {
   SHAPE_N: 60,        // points a movement's shape is stretched to
   SHAPE_START: 0.7,   // from the start, drop movements whose shape matches less than this
   SHAPE_END: 0.4,     // from the end, less than this
+  BEAT: 1.25,         // a first movement this close to the next (× the gap between the reps) is a rep
   LIFT_DEG: 20,       // tilt beyond this = phone picked up
   LIFT_FC: 1.5,       // low-pass for the tilt (Hz)
   GAP_S: 0.25,        // a pause between samples longer than this makes the count unsure (s)
-  AUTO_STOP_S: 3,     // still this long at the bottom after a rep ends the set (s), or as long
+  AUTO_STOP_S: 3,     // still this long after a rep ends the set (s), or as long
                       // as one rep takes when that is longer (slow reps rest at the bottom); 0: never
   STILL_S: 1,         // stillness is judged over this window (s), as strict as REST_STD
   STILL_V: 0.05,      // and the stack slower than this (m/s): a slow rep is smooth too, but moves
@@ -110,7 +116,6 @@ export class RepDetector {
     this.kept = []             // the movements that count
     this.still = []            // the last STILL_S of samples, to tell when the phone lies still
     this.stillSince = null     // since when it has (s), null while it moves
-    this.stillLow = false      // whether that rest began at the bottom
   }
 
   // Times of the reps that count (for a graph).
@@ -193,7 +198,7 @@ export class RepDetector {
       if (this.reps < before) return { type: 'adjust', reps: this.reps }
     }
 
-    // 9. Resting at the bottom?
+    // 9. Resting?
     if (p.AUTO_STOP_S > 0) {
       this.still.push([t, ax, ay, az])
       while (this.still.length && t - this.still[0][0] > p.STILL_S) this.still.shift()
@@ -202,16 +207,8 @@ export class RepDetector {
       const quiet = this.still.length >= 3 && t - this.still[0][0] >= p.STILL_S * 0.95
         && this.spread(this.still) < p.REST_STD && Math.abs(this.v) < p.STILL_V
       if (!quiet) this.stillSince = null
-      else if (this.stillSince === null) {
-        // where the rest began decides: at the bottom, not held up at the top (the position
-        // drifts back to 0 during a long rest, so it is judged at the start only)
-        this.stillSince = t
-        const lift = this.typicalLift()
-        this.stillLow = this.going === -1
-          ? this.hi - this.lo >= 0.5 * Math.max(this.lift, p.MIN)        // came down from the last rep
-          : this.hi - this.bottom < Math.max(2 * p.HYS, 0.5 * lift)      // rose less than half a rep since
-      }
-      if (this.kept.length && this.stillSince !== null && this.stillLow && t - this.stillSince >= Math.max(p.AUTO_STOP_S, this.typicalGap())) {
+      else if (this.stillSince === null) this.stillSince = t
+      if (this.kept.length && this.stillSince !== null && t - this.stillSince >= Math.max(p.AUTO_STOP_S, this.typicalGap())) {
         this.state = 'rested'
         this.finish()
         return { type: 'rested', reps: this.reps }
@@ -233,12 +230,6 @@ export class RepDetector {
     if (this.profile?.gap > 0) return this.profile.gap
     const t = this.repTimes
     return t.length > 1 ? median(t.slice(1).map((x, i) => x - t[i])) : 0
-  }
-
-  // Typical lift of this set so far, or the learned one.
-  typicalLift() {
-    if (this.profile) return this.profile.lift
-    return this.kept.length ? median(this.kept.map(c => this.full(c))) : 0
   }
 
   // The lift a movement stands for: up or down, whichever is larger (the first one starts from
@@ -315,8 +306,16 @@ export class RepDetector {
     const lift = this.profile ? this.profile.lift : median(mid.map(x => this.full(x)))
     for (const x of c) x.match = similarity(x.shape, ref)
     let a = 0, b = c.length
-    while (a < b && c[a].match < p.SHAPE_START) a++
+    // (a movement outside the band is dropped at the start too, else a small preload would
+    // shield the move behind it, sitting down say, from the shape check)
+    while (a < b && (c[a].match < p.SHAPE_START || !this.inBand(c[a], lift))) a++
     while (b > a && c[b - 1].match < p.SHAPE_END) b--
+    // the movement just before them, in time with the reps and lifting as far, is one of them
+    // (see 7. above)
+    if (a >= 1 && b - a >= 3) {
+      const gap = median(c.slice(a + 1, b).map((x, i) => x.t - c[a + i].t))
+      if (c[a].t - c[a - 1].t <= p.BEAT * gap && this.inBand(c[a - 1], lift)) a--
+    }
     this.kept = c.slice(a, b).filter(x => this.inBand(x, lift))
     this.reps = this.kept.length
   }

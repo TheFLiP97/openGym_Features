@@ -67,6 +67,7 @@ function ActiveSensorBar({ settings, onTick }) {
   const [status, setStatus] = useState('wait_rest')
   const [reps, setReps] = useState(0)
   const [sure, setSure] = useState(true)
+  const [settling, setSettling] = useState(false)  // lying still after a rep: about to stop by itself
   const [problem, setProblem] = useState('')
   const run = useRef(null)        // { det, samples, stop, target, rAtStart, startedAt }
   const pending = useRef(new Map())  // counted sets waiting to be ticked, by 'idx:i': { idx, i, exId, summary, debugId }
@@ -107,6 +108,8 @@ function ActiveSensorBar({ settings, onTick }) {
     r.stop = startMotion((t, ax, ay, az) => {
       r.samples.push([t, ax, ay, az])
       const e = det.step(t, ax, ay, az)
+      const still = det.state === 'ready' && det.kept.length > 0 && det.stillSince !== null && t - det.stillSince >= 1
+      if (still !== r.settling) { r.settling = still; setSettling(still) }
       if (!e) return
       setStatus(det.state)
       setReps(det.reps)
@@ -116,7 +119,7 @@ function ActiveSensorBar({ settings, onTick }) {
     })
     run.current = r
     requestWakeLock()
-    setReps(0); setSure(true); setStatus('wait_rest'); setPhase('running')
+    setReps(0); setSure(true); setSettling(false); setStatus('wait_rest'); setPhase('running')
   }
 
   // The set is over (end: 'stop' | 'lifted' | 'rested' | 'tick'): final count, then into the row
@@ -217,7 +220,7 @@ function ActiveSensorBar({ settings, onTick }) {
 
   const which = target ? `Satz ${target.set}${target.w ? ' · ' + fmtNum(target.w) + ' kg' : ''}` : ''
   const title = phase === 'ask' ? `${reps} übernehmen?` : target ? target.name : 'Kein offener Satz mit Wiederholungen'
-  const sub = problem || (phase === 'running' ? `${which} · ${STATUS[status] || ''}` : phase === 'ask' ? `${target?.name || ''} · ${which}` : target ? `${which} · Rep-Sensor` : 'Rep-Sensor (Beta)')
+  const sub = problem || (phase === 'running' ? `${which} · ${settling ? 'Ruhig, stoppt gleich' : STATUS[status] || ''}` : phase === 'ask' ? `${target?.name || ''} · ${which}` : target ? `${which} · Rep-Sensor` : 'Rep-Sensor (Beta)')
 
   return <div id="sensorbar" className={resting ? 'above-timer' : ''}>
     <div className="sb-count">{phase === 'idle' ? '–' : reps}{phase !== 'idle' && !sure && <small>?</small>}</div>
