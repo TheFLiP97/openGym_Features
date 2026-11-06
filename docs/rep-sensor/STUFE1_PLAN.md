@@ -589,3 +589,26 @@ Geändert (geprüft am Replay aller 60 beschrifteten Sätze, Profil nur aus frü
 Offen (die 6 fehlenden Sätze waren Kniebeugen ohne Sensor):
 Auto-Start (z. B. wenn die Pause endet); Live-Zahl springt nach dem Stopp noch (live 35/60 exakt,
 Ende 44/60); schwere letzte Rep (Scott-Curl 9 → 8).
+
+## Stand 2026-11-05: Automatik-Modus, Bildschirm-Fehler, RIR in den Aufnahmen
+
+- **Automatik-Modus ("Dashcam")** als Einstellung "Start: Knopf / Automatisch", Details und Regeln
+  in AUTOMATIK.md (misst ab 70 % der Pause, Satz startet mit den Reps, Zahl nach Ruhe eingetragen,
+  12 s weiter gemessen für eine späte Rep). Regeln in `lib/sensor-auto.js` mit Tests. Der Zähler
+  misst die Ruhe dafür jetzt immer (`restedFor`), entscheidet aber nur im Knopf-Modus selbst.
+- **Fehler behoben:** die Sensor-Leiste gab nach jedem Satz die Bildschirmsperre der ganzen App
+  frei, danach konnte der Bildschirm in der Pause ausgehen. Jetzt nur noch eigene Sperre, wenn
+  "Bildschirm anlassen" aus ist.
+- **Fehler behoben:** ein Satz ohne gezählte Rep schreibt nichts mehr in die Zeile (vorher hätte
+  "Eintragen" eine 0 eingetragen).
+- **Aufnahmen** speichern jetzt beim Abhaken auch RIR/RPE und `start` (Knopf/Automatik), für die
+  VBT-Selbststudie (VBT_STUDIE.md).
+- Geprüft: Replay unverändert (46/60), alle Sensor-Tests grün, im Browser mit künstlichen Sätzen
+  (5 Reps → eingetragen, späte Rep → 6, RIR → abgehakt, gelernt, Aufnahme mit RIR; nach der
+  Pause startet die Messung von selbst).
+- Verworfen (Überanpassung): zweite "müde" Vorlage (hätte 2 Sätze betroffen); allgemeine
+  Start-Vorlage für den ersten Satz (Formen der Übungen sind sich sehr ähnlich, 0,9–1,0, aber die
+  eigene Satzmitte zählt besser: 45 vs. 43 von 60). "?" bei Unsicherheit: das einfache Maß
+  (Form am Rand knapp) markiert 37–52 von 60 Sätzen, viel zu oft; braucht ein schärferes Maß.
+- Schlusspunkt fürs Zählen (vereinbart): ab dem 08.11. zwei Trainings ohne Änderung am Zähler
+  messen; ≥ 80 % Sätze exakt und fast alle ±1 → Zählen fertig.

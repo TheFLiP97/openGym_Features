@@ -3,6 +3,20 @@
 Stand: 2026-10-23. Kontext für eine neue Claude-Code-Session im openGym-Fork.
 Bitte zuerst komplett lesen; Entscheidungen hier sind mit Philipp abgestimmt.
 
+## Aktueller Stand (2026-11-05) und wo was steht
+
+- **Zähler** läuft als Beta im Workout (Safari, NAS-Image `ghcr.io/theflip97/opengym-*:edge`):
+  `frontend/src/lib/rep-detector.js`, Leiste `components/SensorBar.jsx`, Profile
+  `lib/motion-profile.js`. Ergebnisse und alle Änderungen mit Datum: **STUFE1_PLAN.md** (unten).
+  Stand: 46 von 60 Gym-Sätzen exakt, 59 höchstens 1 daneben (≈ 98–99 % der Reps richtig).
+- **Automatik-Modus** ("Dashcam", Start ohne Tipp): **AUTOMATIK.md**.
+- **Was gespeichert wird**: **SPEICHERN.md**.
+- **VBT, Ideen, Recherche, Selbststudie**: **VBT_STUDIE.md**.
+- Regel für jede Änderung am Zähler: Replay aller beschrifteten Gym-Aufnahmen
+  (`docs/rep-sensor/data/raw/<Tag>/`, lokal, nicht im Repo), Profil nur aus früheren Sätzen;
+  nur übernehmen, wenn mindestens gleich gut. Nichts auf denselben Daten überanpassen.
+- Gym-Aufnahmen (auch von Freunden) und die Sensor-Logger-ZIP nie committen.
+
 ## Ziel
 openGym erkennt Wiederholungen automatisch und misst Weg und Geschwindigkeit pro Rep.
 Zuerst mit dem Handy, das bei Maschinen auf dem Gewichtsstapel liegt, später mit einem

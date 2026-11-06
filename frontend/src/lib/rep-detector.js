@@ -198,21 +198,20 @@ export class RepDetector {
       if (this.reps < before) return { type: 'adjust', reps: this.reps }
     }
 
-    // 9. Resting?
-    if (p.AUTO_STOP_S > 0) {
-      this.still.push([t, ax, ay, az])
-      while (this.still.length && t - this.still[0][0] > p.STILL_S) this.still.shift()
-      // quiet: the acceleration hardly varies, and the stack does not glide (a slow rep varies
-      // little too, but keeps a speed)
-      const quiet = this.still.length >= 3 && t - this.still[0][0] >= p.STILL_S * 0.95
-        && this.spread(this.still) < p.REST_STD && Math.abs(this.v) < p.STILL_V
-      if (!quiet) this.stillSince = null
-      else if (this.stillSince === null) this.stillSince = t
-      if (this.kept.length && this.stillSince !== null && t - this.stillSince >= Math.max(p.AUTO_STOP_S, this.typicalGap())) {
-        this.state = 'rested'
-        this.finish()
-        return { type: 'rested', reps: this.reps }
-      }
+    // 9. Resting? (stillSince is kept up also with AUTO_STOP_S 0, for a caller that decides
+    // the end itself: the workout's automatic mode, components/SensorBar.jsx)
+    this.still.push([t, ax, ay, az])
+    while (this.still.length && t - this.still[0][0] > p.STILL_S) this.still.shift()
+    // quiet: the acceleration hardly varies, and the stack does not glide (a slow rep varies
+    // little too, but keeps a speed)
+    const quiet = this.still.length >= 3 && t - this.still[0][0] >= p.STILL_S * 0.95
+      && this.spread(this.still) < p.REST_STD && Math.abs(this.v) < p.STILL_V
+    if (!quiet) this.stillSince = null
+    else if (this.stillSince === null) this.stillSince = t
+    if (p.AUTO_STOP_S > 0 && this.restedFor(t) >= Math.max(p.AUTO_STOP_S, this.typicalGap())) {
+      this.state = 'rested'
+      this.finish()
+      return { type: 'rested', reps: this.reps }
     }
     return null
   }
@@ -223,6 +222,12 @@ export class RepDetector {
     const mean = [1, 2, 3].map(i => buf.reduce((s, x) => s + x[i], 0) / n)
     const sd = Math.sqrt([1, 2, 3].reduce((s, i) => s + buf.reduce((q, x) => q + (x[i] - mean[i - 1]) ** 2, 0) / n, 0))
     return sd / (Math.hypot(...mean) || 1)
+  }
+
+  // How long the stack has lain still after the last counted rep (s), 0 while it moves or
+  // before the first rep.
+  restedFor(t) {
+    return this.kept.length && this.stillSince !== null ? t - this.stillSince : 0
   }
 
   // Typical time per rep: the learned one, or of this set so far (0 before two reps).

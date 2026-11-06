@@ -7,6 +7,11 @@ import { allDebugSets, clearDebugSets } from '../lib/motion-debug-store.js'
 import { fileName, shareFiles } from '../lib/motion-recording.js'
 import { Button, Row, Section, Segmented, Switch } from './ui.jsx'
 
+const START_OPTIONS = [
+  { value: 'button', label: 'Knopf' },
+  { value: 'auto', label: 'Automatisch' },
+]
+
 const MODE_OPTIONS = [
   { value: 'fill', label: 'Eintragen' },
   { value: 'tick', label: 'Abhaken' },
@@ -35,6 +40,9 @@ export default function SensorSettings() {
     <Row icon="chartLine" iconTint="var(--green)" title="Rep-Sensor (Beta)">
       <Switch aria-label="Rep-Sensor" checked={s.on} onChange={v => setSensorSettings({ on: v })} />
     </Row>
+    {s.on && <Row icon="play" iconTint="var(--green)" title="Start" subtitle={s.start === 'auto' ? 'Misst ab 70 % der Pause von selbst' : 'Start tippen vor jedem Satz'}>
+      <Segmented className="seg-inline" options={START_OPTIONS} value={s.start} onChange={v => setSensorSettings({ start: v })} />
+    </Row>}
     {s.on && <Row icon="check" iconTint="var(--green)" title="Nach dem Satz">
       <Segmented className="seg-inline" options={MODE_OPTIONS} value={s.mode} onChange={v => setSensorSettings({ mode: v })} />
     </Row>}

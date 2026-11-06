@@ -10,9 +10,11 @@ const KEY = 'opengym_sensor_settings_v1'
 export const DEFAULTS = {
   on: false,       // show the sensor bar in the workout
   mode: 'fill',    // after a set: 'fill' the reps, 'tick' fill and tick the set, 'ask' first
+  start: 'button', // a set is counted from the Start button, or 'auto' (lib/sensor-auto.js)
   debug: false,    // keep every set's raw data and results on the device (lib/motion-debug-store.js)
 }
 export const MODES = ['fill', 'tick', 'ask']
+export const STARTS = ['button', 'auto']
 
 let current = null
 const listeners = new Set()
@@ -23,6 +25,7 @@ export function getSensorSettings(storage = globalThis.localStorage) {
   try { saved = JSON.parse(storage?.getItem(KEY) || '{}') || {} } catch (e) { saved = {} }
   current = { ...DEFAULTS, ...saved }
   if (!MODES.includes(current.mode)) current.mode = DEFAULTS.mode
+  if (!STARTS.includes(current.start)) current.start = DEFAULTS.start
   return current
 }
 
