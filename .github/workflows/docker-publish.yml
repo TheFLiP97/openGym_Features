@@ -11,22 +11,6 @@ name: Publish Docker images
 # published at once left it pointing at whichever finished last.) Re-running the
 # workflow by hand on a `vX.Y.Z` ref republishes exactly that version's tags.
 on:
-  push:
-    branches: [main]
-    # A docs, website or workflow-only change ships the same images: 181 edge
-    # builds in three months, many of them for a README line. Anything that ends up in an image
-    # still builds (api/, web/, frontend/, catalogue media through the web build).
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - 'website/**'
-      # (a change to this workflow alone: run it by hand)
-      - '.github/**'
-      - 'helm/**'
-      - 'kubernetes/**'
-      - 'contrib/**'
-      - 'frontend/ios/**'
-      - 'frontend/android/**'
   release:
     types: [published]
   workflow_dispatch:
